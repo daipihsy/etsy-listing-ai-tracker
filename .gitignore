@@ -8,3 +8,6 @@ dist/
 # 图标中间产物（保留 icon.svg / icon.png / icon.icns）
 build/icon.iconset/
 build/icon-preview-*.png
+
+# 打包/下载产物
+release-ci/
