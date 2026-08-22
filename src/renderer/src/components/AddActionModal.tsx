@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { Modal, Field, Button, inputCls } from './ui'
+import { MultiImageInput } from './MultiImageInput'
 import { useToast } from './Toast'
 import { addDays, today } from '../lib/format'
 import type { ActionType } from '../../../shared/types'
@@ -26,6 +27,7 @@ export function AddActionModal({
   const [after, setAfter] = useState('')
   const [reason, setReason] = useState('')
   const [reviewDate, setReviewDate] = useState('')
+  const [images, setImages] = useState<string[]>([])
   const [organizing, setOrganizing] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -72,7 +74,9 @@ export function AddActionModal({
         reason: reason.trim() || null,
         review_date: reviewDate || null,
         effect: null,
-        conclusion: null
+        conclusion: null,
+        images: null,
+        imageDataUrls: images
       })
       toast('已保存运营动作', 'success')
       onSaved()
@@ -103,6 +107,9 @@ export function AddActionModal({
           <Button variant="subtle" loading={organizing} onClick={organize} className="w-full">
             <Sparkles size={14} /> AI 整理
           </Button>
+          <Field label="配图（可选：换主图 / 改图等，可粘贴多张）">
+            <MultiImageInput value={images} onChange={setImages} />
+          </Field>
         </div>
 
         <div className="space-y-3 rounded-xl border border-black/5 bg-black/[0.015] p-4">

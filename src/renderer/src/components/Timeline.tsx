@@ -73,6 +73,19 @@ function ActionRow({ a }: { a: Action }): JSX.Element {
           {a.before} → {a.after}
         </span>
       )}
+      {imageCount(a.images) > 0 && (
+        <span className="ml-1 text-xs text-black/40">🖼 {imageCount(a.images)}</span>
+      )}
     </div>
   )
+}
+
+function imageCount(images: string | null): number {
+  if (!images) return 0
+  try {
+    const a = JSON.parse(images)
+    return Array.isArray(a) ? a.length : 0
+  } catch {
+    return 0
+  }
 }

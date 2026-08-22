@@ -61,7 +61,20 @@ export function registerIpc(): void {
 
   // ---------- Actions ----------
   ipcMain.handle('actions:list', (_e, listingId: number) => db.listActions(listingId))
-  ipcMain.handle('actions:create', (_e, input: ActionInput) => db.createAction(input))
+  ipcMain.handle(
+    'actions:create',
+    (_e, input: ActionInput & { imageDataUrls?: string[] }) => {
+      const { imageDataUrls, ...rest } = input
+      const saved: string[] = []
+      for (const url of imageDataUrls || []) {
+        if (url) saved.push(db.saveImage(url, 'action'))
+      }
+      return db.createAction({
+        ...rest,
+        images: saved.length ? JSON.stringify(saved) : rest.images ?? null
+      })
+    }
+  )
   ipcMain.handle('actions:update', (_e, id: number, patch: Partial<Action>) =>
     db.updateAction(id, patch)
   )

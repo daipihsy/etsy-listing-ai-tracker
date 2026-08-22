@@ -81,6 +81,7 @@ export function initDb(): void {
       review_date TEXT,
       effect TEXT,
       conclusion TEXT,
+      images TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
     );
@@ -108,6 +109,11 @@ function migrate(): void {
     })
     tx()
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_uid ON ${t}(uid)`)
+  }
+  // actions 增加配图列
+  const acols = db.prepare('PRAGMA table_info(actions)').all() as { name: string }[]
+  if (!acols.some((c) => c.name === 'images')) {
+    db.exec('ALTER TABLE actions ADD COLUMN images TEXT')
   }
 }
 
@@ -211,8 +217,8 @@ export function createAction(input: ActionInput): Action {
   const info = db
     .prepare(
       `INSERT INTO actions
-       (uid, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion)
-       VALUES (@uid, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion)`
+       (uid, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion, images)
+       VALUES (@uid, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @images)`
     )
     .run({ ...input, uid: randomUUID() })
   db.prepare("UPDATE listings SET updated_at = datetime('now') WHERE id = ?").run(input.listing_id)
@@ -273,10 +279,10 @@ export function importAll(data: ImportData): void {
     )
     for (const s of data.snapshots) si.run(ensureUid(s))
     const ai = db.prepare(
-      `INSERT INTO actions (uid, id, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion, created_at)
-       VALUES (@uid, @id, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @created_at)`
+      `INSERT INTO actions (uid, id, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion, images, created_at)
+       VALUES (@uid, @id, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @images, @created_at)`
     )
-    for (const a of data.actions) ai.run(ensureUid(a))
+    for (const a of data.actions) ai.run({ ...ensureUid(a), images: a.images ?? null })
   })
   tx()
 }
@@ -345,18 +351,19 @@ export function importMerge(data: ImportData): {
 
     // 3) actions：同理
     const upAct = db.prepare(
-      `INSERT INTO actions (uid, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion, created_at)
-       VALUES (@uid, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @created_at)
+      `INSERT INTO actions (uid, listing_id, date, raw_text, ai_summary, type, before, after, reason, review_date, effect, conclusion, images, created_at)
+       VALUES (@uid, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @images, @created_at)
        ON CONFLICT(uid) DO UPDATE SET listing_id=excluded.listing_id, date=excluded.date,
         raw_text=excluded.raw_text, ai_summary=excluded.ai_summary, type=excluded.type,
         before=excluded.before, after=excluded.after, reason=excluded.reason,
-        review_date=excluded.review_date, effect=excluded.effect, conclusion=excluded.conclusion`
+        review_date=excluded.review_date, effect=excluded.effect, conclusion=excluded.conclusion,
+        images=excluded.images`
     )
     for (const raw of data.actions) {
       const a = ensureUid(raw)
       const localListingId = uidToLocalId.get(impIdToUid.get(a.listing_id) || '')
       if (!localListingId) continue
-      upAct.run({ ...a, listing_id: localListingId })
+      upAct.run({ ...a, listing_id: localListingId, images: a.images ?? null })
       stat.actions++
     }
   })

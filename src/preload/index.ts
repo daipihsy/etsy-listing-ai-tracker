@@ -42,7 +42,8 @@ const api = {
   },
   actions: {
     list: (listingId: number): Promise<Action[]> => ipcRenderer.invoke('actions:list', listingId),
-    create: (input: ActionInput): Promise<Action> => ipcRenderer.invoke('actions:create', input),
+    create: (input: ActionInput & { imageDataUrls?: string[] }): Promise<Action> =>
+      ipcRenderer.invoke('actions:create', input),
     update: (id: number, patch: Partial<Action>): Promise<Action> =>
       ipcRenderer.invoke('actions:update', id, patch),
     remove: (id: number): Promise<void> => ipcRenderer.invoke('actions:delete', id)

@@ -34,6 +34,7 @@ export function ListingDetail(): JSX.Element {
   const [showAction, setShowAction] = useState(false)
   const [askAction, setAskAction] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [l, s, a] = await Promise.all([
@@ -195,7 +196,13 @@ export function ListingDetail(): JSX.Element {
             {[...actions]
               .sort((a, b) => (a.date < b.date ? 1 : -1))
               .map((a) => (
-                <ActionCard key={a.id} action={a} snapshots={snapshots} onChanged={load} />
+                <ActionCard
+                  key={a.id}
+                  action={a}
+                  snapshots={snapshots}
+                  onChanged={load}
+                  onImageClick={setLightbox}
+                />
               ))}
           </div>
         )}
@@ -226,6 +233,19 @@ export function ListingDetail(): JSX.Element {
             load()
           }}
         />
+      )}
+
+      {/* 配图放大预览 */}
+      {lightbox && (
+        <div
+          className="no-drag fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8"
+          onClick={() => setLightbox(null)}
+        >
+          <StoredImage
+            filename={lightbox}
+            className="max-h-full max-w-full rounded-lg object-contain"
+          />
+        </div>
       )}
 
       {/* Snapshot 保存后询问是否记录动作 */}
@@ -285,17 +305,30 @@ function Section({
   )
 }
 
+function parseImages(images: string | null): string[] {
+  if (!images) return []
+  try {
+    const a = JSON.parse(images)
+    return Array.isArray(a) ? a : []
+  } catch {
+    return []
+  }
+}
+
 function ActionCard({
   action,
   snapshots,
-  onChanged
+  onChanged,
+  onImageClick
 }: {
   action: Action
   snapshots: Snapshot[]
   onChanged: () => void
+  onImageClick: (filename: string) => void
 }): JSX.Element {
   const ba = computeBeforeAfter(action, snapshots)
   const [conclusion, setConclusion] = useState(action.conclusion || '')
+  const imgs = parseImages(action.images)
 
   async function setEffect(effect: ActionEffect): Promise<void> {
     await window.api.actions.update(action.id, { effect })
@@ -335,6 +368,21 @@ function ActionCard({
         </pre>
       ) : (
         <p className="mt-2 text-sm text-black/75">{action.raw_text}</p>
+      )}
+
+      {imgs.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {imgs.map((f) => (
+            <button
+              key={f}
+              onClick={() => onImageClick(f)}
+              className="h-24 w-24 overflow-hidden rounded-lg border border-black/10 transition hover:ring-2 hover:ring-etsy"
+              title="点击放大"
+            >
+              <StoredImage filename={f} className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Before / After */}

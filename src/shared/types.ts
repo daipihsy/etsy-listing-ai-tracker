@@ -51,6 +51,7 @@ export interface Action {
   review_date: string | null
   effect: ActionEffect
   conclusion: string | null // My Conclusion
+  images: string | null // JSON 数组：配图文件名（如换主图前后对比）
   created_at: string
 }
 
