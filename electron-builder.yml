@@ -10,6 +10,7 @@ asar: true
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
 npmRebuild: true
+afterPack: scripts/afterPack.js
 mac:
   category: public.app-category.productivity
   icon: build/icon.icns
