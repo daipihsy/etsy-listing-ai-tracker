@@ -11,9 +11,9 @@
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "dist": "electron-vite build && electron-builder --mac --arm64",
-    "dist:mac": "electron-vite build && electron-builder --mac --arm64",
-    "dist:win": "electron-vite build && electron-builder --win --x64",
+    "dist": "electron-vite build && electron-builder --mac --arm64 --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --arm64 --publish never",
+    "dist:win": "electron-vite build && electron-builder --win --x64 --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
