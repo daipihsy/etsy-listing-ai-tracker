@@ -94,6 +94,39 @@ export interface AiSettings {
   visionModel: string
 }
 
+export interface GithubConfig {
+  clientId: string
+  token: string
+  user: string
+  repo: string
+  lastSync: string
+}
+
+export interface GithubStatus {
+  loggedIn: boolean
+  clientId: string
+  user: string
+  repo: string
+  lastSync: string
+}
+
+export interface DeviceCode {
+  device_code: string
+  user_code: string
+  verification_uri: string
+  expires_in: number
+  interval: number
+}
+
+export interface SyncResult {
+  listingsAdded: number
+  listingsUpdated: number
+  snapshots: number
+  actions: number
+  imagesPulled: number
+  imagesPushed: number
+}
+
 export type SnapshotInput = Omit<Snapshot, 'id' | 'created_at'>
 export type ListingInput = Pick<Listing, 'name' | 'etsy_url' | 'notes'> & {
   imageDataUrl?: string | null // base64 data URL，主进程负责落盘

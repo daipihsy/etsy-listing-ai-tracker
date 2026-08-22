@@ -1,9 +1,10 @@
-import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
+import { ipcMain, clipboard, dialog, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import os from 'os'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import * as db from './db'
 import * as ai from './ai'
+import * as github from './github'
 import { getSettings, saveSettings } from './settings'
 import type { AiSettings, ListingInput, SnapshotInput, ActionInput, Action, Listing } from '../shared/types'
 
@@ -164,4 +165,19 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('backup:dataDir', () => db.getDataDir())
+
+  // ---------- GitHub 同步 ----------
+  ipcMain.handle('github:status', () => github.status())
+  ipcMain.handle('github:deviceStart', (_e, clientId: string) => github.deviceStart(clientId))
+  ipcMain.handle(
+    'github:deviceWait',
+    (_e, opts: { clientId: string; deviceCode: string; interval: number }) =>
+      github.deviceWait(opts)
+  )
+  ipcMain.handle('github:logout', () => github.logout())
+  ipcMain.handle('github:setRepo', (_e, repo: string) => github.setRepo(repo))
+  ipcMain.handle('github:sync', () => github.sync())
+
+  // ---------- 打开外部链接 ----------
+  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
 }

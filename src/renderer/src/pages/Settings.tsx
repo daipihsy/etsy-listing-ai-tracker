@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Button, Field, inputCls } from '../components/ui'
 import { Combobox } from '../components/Combobox'
+import { GithubSync } from '../components/GithubSync'
 import { useToast } from '../components/Toast'
 import type { AiSettings } from '../../../shared/types'
 
@@ -177,8 +178,12 @@ export function Settings(): JSX.Element {
         </div>
       </section>
 
+      <div className="mb-6">
+        <GithubSync />
+      </div>
+
       <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
-        <h2 className="mb-1 font-semibold">数据同步 / 备份</h2>
+        <h2 className="mb-1 font-semibold">手动导出 / 导入（离线备用）</h2>
         <p className="mb-4 text-sm text-black/40">
           导出一个 <b>.json</b> 文件（含全部 Listing、Snapshot、Action、AI 总结及原始截图），拷到另一台设备导入即可把数据带过去。
         </p>

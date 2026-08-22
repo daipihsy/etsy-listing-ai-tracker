@@ -10,7 +10,10 @@ import type {
   ActionSummary,
   ListingInput,
   SnapshotInput,
-  ActionInput
+  ActionInput,
+  GithubStatus,
+  DeviceCode,
+  SyncResult
 } from '../shared/types'
 
 type ListingWithLatest = Listing & {
@@ -81,6 +84,23 @@ const api = {
       stat?: { listingsAdded: number; listingsUpdated: number; snapshots: number; actions: number }
     }> => ipcRenderer.invoke('backup:import', mode),
     dataDir: (): Promise<string> => ipcRenderer.invoke('backup:dataDir')
+  },
+  github: {
+    status: (): Promise<GithubStatus> => ipcRenderer.invoke('github:status'),
+    deviceStart: (clientId: string): Promise<DeviceCode> =>
+      ipcRenderer.invoke('github:deviceStart', clientId),
+    deviceWait: (opts: {
+      clientId: string
+      deviceCode: string
+      interval: number
+    }): Promise<{ ok: boolean; user?: string; error?: string }> =>
+      ipcRenderer.invoke('github:deviceWait', opts),
+    logout: (): Promise<GithubStatus> => ipcRenderer.invoke('github:logout'),
+    setRepo: (repo: string): Promise<GithubStatus> => ipcRenderer.invoke('github:setRepo', repo),
+    sync: (): Promise<SyncResult> => ipcRenderer.invoke('github:sync')
+  },
+  shell: {
+    openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url)
   }
 }
 
