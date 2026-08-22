@@ -72,7 +72,14 @@ const api = {
   },
   backup: {
     export: (): Promise<{ ok: boolean; filePath?: string }> => ipcRenderer.invoke('backup:export'),
-    import: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('backup:import'),
+    import: (
+      mode: 'merge' | 'replace'
+    ): Promise<{
+      ok: boolean
+      mode?: 'merge' | 'replace'
+      error?: string
+      stat?: { listingsAdded: number; listingsUpdated: number; snapshots: number; actions: number }
+    }> => ipcRenderer.invoke('backup:import', mode),
     dataDir: (): Promise<string> => ipcRenderer.invoke('backup:dataDir')
   }
 }

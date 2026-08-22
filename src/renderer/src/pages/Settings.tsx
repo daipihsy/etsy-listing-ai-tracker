@@ -86,12 +86,25 @@ export function Settings(): JSX.Element {
 
   async function doExport(): Promise<void> {
     const r = await window.api.backup.export()
-    if (r.ok) toast('已导出备份', 'success')
+    if (r.ok) toast('已导出数据文件', 'success')
   }
-  async function doImport(): Promise<void> {
-    if (!confirm('导入将覆盖当前所有数据，确定继续？')) return
-    const r = await window.api.backup.import()
-    if (r.ok) toast('导入完成，请重新进入 Listings 查看', 'success')
+  async function doImport(mode: 'merge' | 'replace'): Promise<void> {
+    if (mode === 'replace' && !confirm('覆盖式导入会清空本地全部数据、替换成文件里的内容，确定继续？')) {
+      return
+    }
+    const r = await window.api.backup.import(mode)
+    if (!r.ok) {
+      if (r.error) toast(r.error, 'error')
+      return
+    }
+    if (r.mode === 'merge' && r.stat) {
+      toast(
+        `合并完成：新增 ${r.stat.listingsAdded} 个 / 更新 ${r.stat.listingsUpdated} 个 Listing，${r.stat.snapshots} 条数据、${r.stat.actions} 条动作已同步`,
+        'success'
+      )
+    } else {
+      toast('覆盖导入完成', 'success')
+    }
   }
 
   return (
@@ -165,18 +178,36 @@ export function Settings(): JSX.Element {
       </section>
 
       <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
-        <h2 className="mb-1 font-semibold">数据备份</h2>
+        <h2 className="mb-1 font-semibold">数据同步 / 备份</h2>
         <p className="mb-4 text-sm text-black/40">
-          备份包含所有 Listing、Snapshot、Action、AI 总结及原始截图。
+          导出一个 <b>.json</b> 文件（含全部 Listing、Snapshot、Action、AI 总结及原始截图），拷到另一台设备导入即可把数据带过去。
         </p>
-        <div className="flex gap-2">
+
+        <div className="mb-4">
+          <p className="mb-1.5 text-xs font-medium text-black/55">① 在当前设备导出</p>
           <Button variant="subtle" onClick={doExport}>
-            导出备份
-          </Button>
-          <Button variant="subtle" onClick={doImport}>
-            导入备份
+            导出数据文件
           </Button>
         </div>
+
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-black/55">② 在另一台设备导入</p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => doImport('merge')}>合并导入（推荐）</Button>
+            <Button variant="subtle" onClick={() => doImport('replace')}>
+              覆盖式导入
+            </Button>
+          </div>
+          <ul className="mt-2 space-y-0.5 text-xs text-black/45">
+            <li>
+              <b>合并</b>：按记录智能合并，只新增/更新，<b>不会删除</b>本地独有的数据；Listing 冲突时以更新时间较新的为准。日常轮流用选这个最安全。
+            </li>
+            <li>
+              <b>覆盖</b>：清空本地、完全替换成文件内容。仅在想把某台设备"整体还原成文件状态"时用。
+            </li>
+          </ul>
+        </div>
+
         <p className="mt-4 break-all text-xs text-black/30">数据目录：{dataDir}</p>
       </section>
     </div>

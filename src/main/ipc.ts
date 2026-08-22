@@ -1,5 +1,6 @@
 import { ipcMain, clipboard, dialog, BrowserWindow } from 'electron'
 import { join } from 'path'
+import os from 'os'
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import * as db from './db'
 import * as ai from './ai'
@@ -109,31 +110,57 @@ export function registerIpc(): void {
         /* skip */
       }
     }
-    writeFileSync(filePath, JSON.stringify({ version: 1, ...data, images }, null, 2))
+    const meta = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      device: os.hostname(),
+      counts: {
+        listings: data.listings.length,
+        snapshots: data.snapshots.length,
+        actions: data.actions.length
+      }
+    }
+    writeFileSync(filePath, JSON.stringify({ ...meta, ...data, images }, null, 2))
     return { ok: true, filePath }
   })
 
-  ipcMain.handle('backup:import', async () => {
+  ipcMain.handle('backup:import', async (_e, mode: 'merge' | 'replace' = 'merge') => {
     const win = BrowserWindow.getFocusedWindow()
     const { canceled, filePaths } = await dialog.showOpenDialog(win!, {
-      title: '导入备份（将覆盖当前数据）',
+      title: mode === 'replace' ? '覆盖式导入（替换全部本地数据）' : '合并导入（补充/更新，不删除本地数据）',
       properties: ['openFile'],
       filters: [{ name: 'Backup', extensions: ['json'] }]
     })
     if (canceled || !filePaths[0]) return { ok: false }
-    const parsed = JSON.parse(readFileSync(filePaths[0], 'utf-8'))
-    // 还原图片
+    let parsed: {
+      listings?: unknown[]
+      snapshots?: unknown[]
+      actions?: unknown[]
+      images?: Record<string, string>
+    }
+    try {
+      parsed = JSON.parse(readFileSync(filePaths[0], 'utf-8'))
+    } catch {
+      return { ok: false, error: '文件不是有效的备份 JSON。' }
+    }
+    if (!parsed.listings) return { ok: false, error: '文件缺少数据，可能不是本应用导出的备份。' }
+    // 还原图片（同名即同内容，直接写入）
     if (parsed.images) {
-      for (const [name, b64] of Object.entries<string>(parsed.images)) {
+      for (const [name, b64] of Object.entries(parsed.images)) {
         writeFileSync(join(db.getImagesDir(), name), Buffer.from(b64, 'base64'))
       }
     }
-    db.importAll({
-      listings: parsed.listings || [],
-      snapshots: parsed.snapshots || [],
-      actions: parsed.actions || []
-    })
-    return { ok: true }
+    const payload = {
+      listings: (parsed.listings || []) as never[],
+      snapshots: (parsed.snapshots || []) as never[],
+      actions: (parsed.actions || []) as never[]
+    }
+    if (mode === 'replace') {
+      db.importAll(payload)
+      return { ok: true, mode }
+    }
+    const stat = db.importMerge(payload)
+    return { ok: true, mode, stat }
   })
 
   ipcMain.handle('backup:dataDir', () => db.getDataDir())
