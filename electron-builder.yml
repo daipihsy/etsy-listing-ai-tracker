@@ -1,0 +1,44 @@
+appId: com.daipihsy.etsy-listing-ai-tracker
+productName: Etsy Listing AI Tracker
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**
+  - '!**/{.eslintrc,.prettierrc,tsconfig.*,*.map}'
+asar: true
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+npmRebuild: true
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  # 个人使用，未做代码签名。首次打开需右键 → 打开。
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Etsy Listing AI Tracker
+  artifactName: ${productName}-${version}-win-x64-setup.${ext}
+dmg:
+  title: Etsy Listing AI Tracker
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
