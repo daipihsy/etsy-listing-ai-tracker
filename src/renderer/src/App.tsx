@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutGrid, Settings as SettingsIcon } from 'lucide-react'
+import { LayoutGrid, Store, Settings as SettingsIcon } from 'lucide-react'
 
 export function App(): JSX.Element {
   return (
@@ -12,7 +12,8 @@ export function App(): JSX.Element {
             <p className="text-sm font-semibold leading-tight">Etsy Listing</p>
             <p className="text-sm font-semibold leading-tight text-etsy">AI Tracker</p>
           </div>
-          <NavItem to="/listings" icon={<LayoutGrid size={17} />} label="Listings" />
+          <NavItem to="/listings" icon={<LayoutGrid size={17} />} label="单链接分析" />
+          <NavItem to="/stores" icon={<Store size={17} />} label="整店分析" />
           <NavItem to="/settings" icon={<SettingsIcon size={17} />} label="Settings" />
           <div className="mt-auto px-2 text-[11px] text-black/30">本地数据 · 无需联网存储</div>
         </aside>

@@ -8,7 +8,11 @@ import type {
   Snapshot,
   Action,
   SnapshotInput,
-  ActionInput
+  ActionInput,
+  Shop,
+  StoreSnapshot,
+  StoreChat,
+  StoreSnapshotInput
 } from '../shared/types'
 
 let db: Database.Database
@@ -90,6 +94,53 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_action_listing ON actions(listing_id, date);
   `)
 
+  // 整店分析相关表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shops (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid TEXT,
+      name TEXT NOT NULL,
+      notes TEXT,
+      ai_advice TEXT,
+      ai_advice_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS store_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid TEXT,
+      shop_id INTEGER NOT NULL,
+      date_range TEXT,
+      visits REAL, orders REAL, conversion_rate REAL, revenue REAL,
+      ads_views REAL, ads_clicks REAL, ads_orders REAL, ads_revenue REAL, ads_spend REAL, roas REAL, click_rate REAL,
+      fav_items REAL, shop_follows REAL, reviews_count REAL, review_avg REAL, repeat_buyers REAL, cities_reached REAL, abandoned_carts REAL,
+      daily_csv TEXT,
+      ad_listings TEXT,
+      stats_extra TEXT,
+      original_images TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS store_chats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid TEXT,
+      shop_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ss_shop ON store_snapshots(shop_id);
+    CREATE INDEX IF NOT EXISTS idx_sc_shop ON store_chats(shop_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_shops_uid ON shops(uid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ss_uid ON store_snapshots(uid);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sc_uid ON store_chats(uid);
+  `)
+
   migrate()
 }
 
@@ -114,6 +165,14 @@ function migrate(): void {
   const acols = db.prepare('PRAGMA table_info(actions)').all() as { name: string }[]
   if (!acols.some((c) => c.name === 'images')) {
     db.exec('ALTER TABLE actions ADD COLUMN images TEXT')
+  }
+  // store_snapshots 增加单链接广告明细列
+  const sscols = db.prepare('PRAGMA table_info(store_snapshots)').all() as { name: string }[]
+  if (sscols.length && !sscols.some((c) => c.name === 'ad_listings')) {
+    db.exec('ALTER TABLE store_snapshots ADD COLUMN ad_listings TEXT')
+  }
+  if (sscols.length && !sscols.some((c) => c.name === 'stats_extra')) {
+    db.exec('ALTER TABLE store_snapshots ADD COLUMN stats_extra TEXT')
   }
 }
 
@@ -238,17 +297,114 @@ export function deleteAction(id: number): void {
   db.prepare('DELETE FROM actions WHERE id = ?').run(id)
 }
 
+// ---------- Shops（整店） ----------
+
+export function listShops(): (Shop & { latest: StoreSnapshot | null })[] {
+  const rows = db.prepare('SELECT * FROM shops ORDER BY updated_at DESC').all() as Shop[]
+  return rows.map((s) => ({
+    ...s,
+    latest:
+      (db
+        .prepare('SELECT * FROM store_snapshots WHERE shop_id = ? ORDER BY id DESC LIMIT 1')
+        .get(s.id) as StoreSnapshot) || null
+  }))
+}
+
+export function getShop(id: number): Shop | null {
+  return (db.prepare('SELECT * FROM shops WHERE id = ?').get(id) as Shop) || null
+}
+
+export function createShop(input: { name: string; notes: string | null }): Shop {
+  const info = db
+    .prepare('INSERT INTO shops (uid, name, notes) VALUES (?, ?, ?)')
+    .run(randomUUID(), input.name, input.notes)
+  return getShop(Number(info.lastInsertRowid))!
+}
+
+export function updateShop(id: number, patch: Partial<Shop>): Shop {
+  const fields = Object.keys(patch).filter((k) => k !== 'id')
+  if (fields.length) {
+    const set = fields.map((f) => `${f} = @${f}`).join(', ')
+    db.prepare(`UPDATE shops SET ${set}, updated_at = datetime('now') WHERE id = @id`).run({
+      ...patch,
+      id
+    })
+  }
+  return getShop(id)!
+}
+
+export function deleteShop(id: number): void {
+  db.prepare('DELETE FROM shops WHERE id = ?').run(id)
+}
+
+// ---------- Store Snapshots ----------
+
+export function listStoreSnapshots(shopId: number): StoreSnapshot[] {
+  return db
+    .prepare('SELECT * FROM store_snapshots WHERE shop_id = ? ORDER BY id ASC')
+    .all(shopId) as StoreSnapshot[]
+}
+
+export function createStoreSnapshot(input: StoreSnapshotInput): StoreSnapshot {
+  const info = db
+    .prepare(
+      `INSERT INTO store_snapshots
+       (uid, shop_id, date_range, visits, orders, conversion_rate, revenue,
+        ads_views, ads_clicks, ads_orders, ads_revenue, ads_spend, roas, click_rate,
+        fav_items, shop_follows, reviews_count, review_avg, repeat_buyers, cities_reached, abandoned_carts,
+        daily_csv, ad_listings, stats_extra, original_images, notes)
+       VALUES (@uid, @shop_id, @date_range, @visits, @orders, @conversion_rate, @revenue,
+        @ads_views, @ads_clicks, @ads_orders, @ads_revenue, @ads_spend, @roas, @click_rate,
+        @fav_items, @shop_follows, @reviews_count, @review_avg, @repeat_buyers, @cities_reached, @abandoned_carts,
+        @daily_csv, @ad_listings, @stats_extra, @original_images, @notes)`
+    )
+    .run({ ...input, uid: randomUUID() })
+  db.prepare("UPDATE shops SET updated_at = datetime('now') WHERE id = ?").run(input.shop_id)
+  return db
+    .prepare('SELECT * FROM store_snapshots WHERE id = ?')
+    .get(info.lastInsertRowid) as StoreSnapshot
+}
+
+export function deleteStoreSnapshot(id: number): void {
+  db.prepare('DELETE FROM store_snapshots WHERE id = ?').run(id)
+}
+
+// ---------- Store Chats ----------
+
+export function listStoreChats(shopId: number): StoreChat[] {
+  return db
+    .prepare('SELECT * FROM store_chats WHERE shop_id = ? ORDER BY id ASC')
+    .all(shopId) as StoreChat[]
+}
+
+export function addStoreChat(shopId: number, role: 'user' | 'assistant', content: string): StoreChat {
+  const info = db
+    .prepare('INSERT INTO store_chats (uid, shop_id, role, content) VALUES (?, ?, ?, ?)')
+    .run(randomUUID(), shopId, role, content)
+  return db.prepare('SELECT * FROM store_chats WHERE id = ?').get(info.lastInsertRowid) as StoreChat
+}
+
+export function clearStoreChats(shopId: number): void {
+  db.prepare('DELETE FROM store_chats WHERE shop_id = ?').run(shopId)
+}
+
 // ---------- 全量导出（备份用） ----------
 
 export function exportAll(): {
   listings: Listing[]
   snapshots: Snapshot[]
   actions: Action[]
+  shops: Shop[]
+  storeSnapshots: StoreSnapshot[]
+  storeChats: StoreChat[]
 } {
   return {
     listings: db.prepare('SELECT * FROM listings').all() as Listing[],
     snapshots: db.prepare('SELECT * FROM snapshots').all() as Snapshot[],
-    actions: db.prepare('SELECT * FROM actions').all() as Action[]
+    actions: db.prepare('SELECT * FROM actions').all() as Action[],
+    shops: db.prepare('SELECT * FROM shops').all() as Shop[],
+    storeSnapshots: db.prepare('SELECT * FROM store_snapshots').all() as StoreSnapshot[],
+    storeChats: db.prepare('SELECT * FROM store_chats').all() as StoreChat[]
   }
 }
 
@@ -256,6 +412,9 @@ type ImportData = {
   listings: (Listing & { uid?: string })[]
   snapshots: (Snapshot & { uid?: string })[]
   actions: (Action & { uid?: string })[]
+  shops?: (Shop & { uid?: string })[]
+  storeSnapshots?: (StoreSnapshot & { uid?: string })[]
+  storeChats?: (StoreChat & { uid?: string })[]
 }
 
 function ensureUid<T extends { uid?: string }>(row: T): T & { uid: string } {
@@ -283,8 +442,33 @@ export function importAll(data: ImportData): void {
        VALUES (@uid, @id, @listing_id, @date, @raw_text, @ai_summary, @type, @before, @after, @reason, @review_date, @effect, @conclusion, @images, @created_at)`
     )
     for (const a of data.actions) ai.run({ ...ensureUid(a), images: a.images ?? null })
+
+    db.exec('DELETE FROM store_chats; DELETE FROM store_snapshots; DELETE FROM shops;')
+    const sh = db.prepare(
+      `INSERT INTO shops (uid, id, name, notes, ai_advice, ai_advice_at, created_at, updated_at)
+       VALUES (@uid, @id, @name, @notes, @ai_advice, @ai_advice_at, @created_at, @updated_at)`
+    )
+    for (const s of data.shops || []) sh.run(ensureUid(s))
+    const ssi = db.prepare(storeSnapInsertSql('id'))
+    for (const s of data.storeSnapshots || []) ssi.run(ensureUid(s))
+    const sci = db.prepare(
+      `INSERT INTO store_chats (uid, id, shop_id, role, content, created_at)
+       VALUES (@uid, @id, @shop_id, @role, @content, @created_at)`
+    )
+    for (const c of data.storeChats || []) sci.run(ensureUid(c))
   })
   tx()
+}
+
+function storeSnapInsertSql(includeId: 'id' | 'noid'): string {
+  const cols =
+    'uid, shop_id, date_range, visits, orders, conversion_rate, revenue, ads_views, ads_clicks, ads_orders, ads_revenue, ads_spend, roas, click_rate, fav_items, shop_follows, reviews_count, review_avg, repeat_buyers, cities_reached, abandoned_carts, daily_csv, ad_listings, stats_extra, original_images, notes, created_at'
+  const withId = includeId === 'id' ? 'id, ' + cols : cols
+  const vals = withId
+    .split(', ')
+    .map((c) => '@' + c)
+    .join(', ')
+  return `INSERT INTO store_snapshots (${withId}) VALUES (${vals})`
 }
 
 // 合并式导入：按 uid 识别记录，只新增/更新，绝不删除本地独有数据。
@@ -365,6 +549,64 @@ export function importMerge(data: ImportData): {
       if (!localListingId) continue
       upAct.run({ ...a, listing_id: localListingId, images: a.images ?? null })
       stat.actions++
+    }
+
+    // 4) shops：uid -> 本地 id
+    const shopUidToLocal = new Map<string, number>()
+    const shopImpIdToUid = new Map<number, string>()
+    const findShop = db.prepare('SELECT id, updated_at FROM shops WHERE uid = ?')
+    const updShop = db.prepare(
+      `UPDATE shops SET name=@name, notes=@notes, ai_advice=@ai_advice, ai_advice_at=@ai_advice_at, updated_at=@updated_at WHERE uid=@uid`
+    )
+    const insShop = db.prepare(
+      `INSERT INTO shops (uid, name, notes, ai_advice, ai_advice_at, created_at, updated_at)
+       VALUES (@uid, @name, @notes, @ai_advice, @ai_advice_at, @created_at, @updated_at)`
+    )
+    for (const raw of data.shops || []) {
+      const s = ensureUid(raw)
+      shopImpIdToUid.set(s.id, s.uid)
+      const local = findShop.get(s.uid) as { id: number; updated_at: string } | undefined
+      if (local) {
+        shopUidToLocal.set(s.uid, local.id)
+        if ((s.updated_at || '') > (local.updated_at || '')) updShop.run(s)
+      } else {
+        const info = insShop.run(s)
+        shopUidToLocal.set(s.uid, Number(info.lastInsertRowid))
+      }
+    }
+
+    // 5) store_snapshots：按 uid upsert，shop_id 重映射
+    const cols =
+      'shop_id, date_range, visits, orders, conversion_rate, revenue, ads_views, ads_clicks, ads_orders, ads_revenue, ads_spend, roas, click_rate, fav_items, shop_follows, reviews_count, review_avg, repeat_buyers, cities_reached, abandoned_carts, daily_csv, ad_listings, stats_extra, original_images, notes, created_at'
+    const setClause = cols
+      .split(', ')
+      .map((c) => `${c}=excluded.${c}`)
+      .join(', ')
+    const upStoreSnap = db.prepare(
+      `INSERT INTO store_snapshots (uid, ${cols}) VALUES (@uid, ${cols
+        .split(', ')
+        .map((c) => '@' + c)
+        .join(', ')})
+       ON CONFLICT(uid) DO UPDATE SET ${setClause}`
+    )
+    for (const raw of data.storeSnapshots || []) {
+      const s = ensureUid(raw)
+      const localShopId = shopUidToLocal.get(shopImpIdToUid.get(s.shop_id) || '')
+      if (!localShopId) continue
+      upStoreSnap.run({ ...s, shop_id: localShopId })
+    }
+
+    // 6) store_chats：按 uid upsert，shop_id 重映射
+    const upChat = db.prepare(
+      `INSERT INTO store_chats (uid, shop_id, role, content, created_at)
+       VALUES (@uid, @shop_id, @role, @content, @created_at)
+       ON CONFLICT(uid) DO UPDATE SET shop_id=excluded.shop_id, role=excluded.role, content=excluded.content`
+    )
+    for (const raw of data.storeChats || []) {
+      const c = ensureUid(raw)
+      const localShopId = shopUidToLocal.get(shopImpIdToUid.get(c.shop_id) || '')
+      if (!localShopId) continue
+      upChat.run({ ...c, shop_id: localShopId })
     }
   })
   tx()

@@ -5,6 +5,8 @@ import './index.css'
 import { App } from './App'
 import { Listings } from './pages/Listings'
 import { ListingDetail } from './pages/ListingDetail'
+import { Stores } from './pages/Stores'
+import { StoreDetail } from './pages/StoreDetail'
 import { Settings } from './pages/Settings'
 import { ToastProvider } from './components/Toast'
 
@@ -17,6 +19,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route index element={<Navigate to="/listings" replace />} />
             <Route path="listings" element={<Listings />} />
             <Route path="listings/:id" element={<ListingDetail />} />
+            <Route path="stores" element={<Stores />} />
+            <Route path="stores/:id" element={<StoreDetail />} />
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

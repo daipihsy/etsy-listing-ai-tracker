@@ -63,7 +63,11 @@ export function addDays(dateStr: string, days: number): string {
 export function parseLoose(input: string | number | null | undefined): number | null {
   if (input === null || input === undefined || input === '') return null
   if (typeof input === 'number') return input
-  let s = String(input).trim().replace(/[$,%\s]/g, '')
+  // 去掉货币代码/符号、千分位、百分号、空格（如 "USD 31,933.68" / "$3.4%"）
+  let s = String(input)
+    .trim()
+    .replace(/us\$|usd|eur|gbp|cad|aud/gi, '')
+    .replace(/[$£€,%\s]/g, '')
   let mult = 1
   if (/k$/i.test(s)) {
     mult = 1_000

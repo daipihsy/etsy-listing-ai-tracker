@@ -8,12 +8,19 @@ import type {
   OrganicExtract,
   FavoritesExtract,
   ActionSummary,
+  SnapshotTextExtract,
   ListingInput,
   SnapshotInput,
   ActionInput,
   GithubStatus,
   DeviceCode,
-  SyncResult
+  SyncResult,
+  Shop,
+  StoreSnapshot,
+  StoreChat,
+  StoreSnapshotInput,
+  StoreStatsExtract,
+  StoreAdsExtract
 } from '../shared/types'
 
 type ListingWithLatest = Listing & {
@@ -57,6 +64,8 @@ const api = {
       ipcRenderer.invoke('ai:extractFavorites', dataUrl),
     summarizeAction: (raw: string): Promise<ActionSummary> =>
       ipcRenderer.invoke('ai:summarizeAction', raw),
+    extractSnapshotText: (text: string): Promise<SnapshotTextExtract> =>
+      ipcRenderer.invoke('ai:extractSnapshotText', text),
     summarizeListing: (ctx: string): Promise<string> =>
       ipcRenderer.invoke('ai:summarizeListing', ctx),
     test: (): Promise<string> => ipcRenderer.invoke('ai:test'),
@@ -102,6 +111,40 @@ const api = {
   },
   shell: {
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:openExternal', url)
+  },
+  shops: {
+    list: (): Promise<(Shop & { latest: StoreSnapshot | null })[]> =>
+      ipcRenderer.invoke('shops:list'),
+    get: (id: number): Promise<Shop | null> => ipcRenderer.invoke('shops:get', id),
+    create: (input: { name: string; notes: string | null }): Promise<Shop> =>
+      ipcRenderer.invoke('shops:create', input),
+    update: (id: number, patch: Partial<Shop>): Promise<Shop> =>
+      ipcRenderer.invoke('shops:update', id, patch),
+    remove: (id: number): Promise<void> => ipcRenderer.invoke('shops:delete', id)
+  },
+  storeSnapshots: {
+    list: (shopId: number): Promise<StoreSnapshot[]> =>
+      ipcRenderer.invoke('storeSnapshots:list', shopId),
+    create: (
+      input: Omit<StoreSnapshotInput, 'original_images'> & { imageDataUrls?: string[] }
+    ): Promise<StoreSnapshot> => ipcRenderer.invoke('storeSnapshots:create', input),
+    remove: (id: number): Promise<void> => ipcRenderer.invoke('storeSnapshots:delete', id)
+  },
+  storeChats: {
+    list: (shopId: number): Promise<StoreChat[]> => ipcRenderer.invoke('storeChats:list', shopId),
+    clear: (shopId: number): Promise<void> => ipcRenderer.invoke('storeChats:clear', shopId)
+  },
+  storeAi: {
+    extractStats: (dataUrl: string): Promise<StoreStatsExtract> =>
+      ipcRenderer.invoke('ai:extractStoreStats', dataUrl),
+    extractAds: (dataUrl: string): Promise<StoreAdsExtract> =>
+      ipcRenderer.invoke('ai:extractStoreAds', dataUrl),
+    extractAdsText: (text: string): Promise<StoreAdsExtract> =>
+      ipcRenderer.invoke('ai:extractStoreAdsText', text),
+    advice: (shopId: number, context: string): Promise<string> =>
+      ipcRenderer.invoke('ai:storeAdvice', shopId, context),
+    chat: (shopId: number, userMessage: string, context: string): Promise<StoreChat> =>
+      ipcRenderer.invoke('ai:storeChat', shopId, userMessage, context)
   }
 }
 

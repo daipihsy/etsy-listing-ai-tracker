@@ -219,11 +219,14 @@ async function downloadImage(
 function buildStructured(): string {
   const data = db.exportAll()
   return JSON.stringify({
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     listings: data.listings,
     snapshots: data.snapshots,
-    actions: data.actions
+    actions: data.actions,
+    shops: data.shops,
+    storeSnapshots: data.storeSnapshots,
+    storeChats: data.storeChats
   })
 }
 
@@ -254,7 +257,10 @@ export async function sync(): Promise<SyncResult> {
       const stat = db.importMerge({
         listings: parsed.listings || [],
         snapshots: parsed.snapshots || [],
-        actions: parsed.actions || []
+        actions: parsed.actions || [],
+        shops: parsed.shops || [],
+        storeSnapshots: parsed.storeSnapshots || [],
+        storeChats: parsed.storeChats || []
       })
       result.listingsAdded = stat.listingsAdded
       result.listingsUpdated = stat.listingsUpdated

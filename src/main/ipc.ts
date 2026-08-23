@@ -6,7 +6,15 @@ import * as db from './db'
 import * as ai from './ai'
 import * as github from './github'
 import { getSettings, saveSettings } from './settings'
-import type { AiSettings, ListingInput, SnapshotInput, ActionInput, Action, Listing } from '../shared/types'
+import type {
+  AiSettings,
+  ListingInput,
+  SnapshotInput,
+  ActionInput,
+  Action,
+  Listing,
+  StoreSnapshotInput
+} from '../shared/types'
 
 function fileToDataUrl(filename: string): string | null {
   const abs = join(db.getImagesDir(), filename)
@@ -95,6 +103,7 @@ export function registerIpc(): void {
   ipcMain.handle('ai:extractOrganic', (_e, dataUrl: string) => ai.extractOrganic(dataUrl))
   ipcMain.handle('ai:extractFavorites', (_e, dataUrl: string) => ai.extractFavorites(dataUrl))
   ipcMain.handle('ai:summarizeAction', (_e, raw: string) => ai.summarizeAction(raw))
+  ipcMain.handle('ai:extractSnapshotText', (_e, text: string) => ai.extractSnapshotFromText(text))
   ipcMain.handle('ai:summarizeListing', (_e, ctx: string) => ai.summarizeListing(ctx))
   ipcMain.handle('ai:test', () => ai.testConnection())
   ipcMain.handle('ai:listModels', (_e, override?: { baseUrl?: string; apiKey?: string }) =>
@@ -164,10 +173,14 @@ export function registerIpc(): void {
         writeFileSync(join(db.getImagesDir(), name), Buffer.from(b64, 'base64'))
       }
     }
+    const p = parsed as Record<string, unknown[]>
     const payload = {
-      listings: (parsed.listings || []) as never[],
-      snapshots: (parsed.snapshots || []) as never[],
-      actions: (parsed.actions || []) as never[]
+      listings: (p.listings || []) as never[],
+      snapshots: (p.snapshots || []) as never[],
+      actions: (p.actions || []) as never[],
+      shops: (p.shops || []) as never[],
+      storeSnapshots: (p.storeSnapshots || []) as never[],
+      storeChats: (p.storeChats || []) as never[]
     }
     if (mode === 'replace') {
       db.importAll(payload)
@@ -175,6 +188,53 @@ export function registerIpc(): void {
     }
     const stat = db.importMerge(payload)
     return { ok: true, mode, stat }
+  })
+
+  // ---------- 整店分析 ----------
+  ipcMain.handle('shops:list', () => db.listShops())
+  ipcMain.handle('shops:get', (_e, id: number) => db.getShop(id))
+  ipcMain.handle('shops:create', (_e, input: { name: string; notes: string | null }) =>
+    db.createShop({ name: input.name, notes: input.notes || null })
+  )
+  ipcMain.handle('shops:update', (_e, id: number, patch: Record<string, unknown>) =>
+    db.updateShop(id, patch)
+  )
+  ipcMain.handle('shops:delete', (_e, id: number) => db.deleteShop(id))
+
+  ipcMain.handle(
+    'storeSnapshots:create',
+    (
+      _e,
+      input: Omit<StoreSnapshotInput, 'original_images'> & { imageDataUrls?: string[] }
+    ) => {
+      const { imageDataUrls, ...rest } = input
+      const saved: string[] = []
+      for (const url of imageDataUrls || []) if (url) saved.push(db.saveImage(url, 'store'))
+      return db.createStoreSnapshot({
+        ...rest,
+        original_images: saved.length ? JSON.stringify(saved) : null
+      })
+    }
+  )
+  ipcMain.handle('storeSnapshots:list', (_e, shopId: number) => db.listStoreSnapshots(shopId))
+  ipcMain.handle('storeSnapshots:delete', (_e, id: number) => db.deleteStoreSnapshot(id))
+
+  ipcMain.handle('storeChats:list', (_e, shopId: number) => db.listStoreChats(shopId))
+  ipcMain.handle('storeChats:clear', (_e, shopId: number) => db.clearStoreChats(shopId))
+
+  ipcMain.handle('ai:extractStoreStats', (_e, dataUrl: string) => ai.extractStoreStats(dataUrl))
+  ipcMain.handle('ai:extractStoreAds', (_e, dataUrl: string) => ai.extractStoreAds(dataUrl))
+  ipcMain.handle('ai:extractStoreAdsText', (_e, text: string) => ai.extractStoreAdsFromText(text))
+  ipcMain.handle('ai:storeAdvice', async (_e, shopId: number, context: string) => {
+    const text = await ai.storeAdvice(context)
+    db.updateShop(shopId, { ai_advice: text, ai_advice_at: new Date().toISOString() })
+    return text
+  })
+  ipcMain.handle('ai:storeChat', async (_e, shopId: number, userMessage: string, context: string) => {
+    db.addStoreChat(shopId, 'user', userMessage)
+    const history = db.listStoreChats(shopId).map((c) => ({ role: c.role, content: c.content }))
+    const answer = await ai.storeChat(context, history)
+    return db.addStoreChat(shopId, 'assistant', answer)
   })
 
   ipcMain.handle('backup:dataDir', () => db.getDataDir())
