@@ -60,6 +60,19 @@ export function ListingDetail(): JSX.Element {
     setListing((prev) => (prev ? { ...prev, decision: d } : prev))
   }
 
+  async function delSnapshot(id: number): Promise<void> {
+    if (!confirm('删除这条 Snapshot 记录？此操作不可撤销。')) return
+    await window.api.snapshots.remove(id)
+    toast('已删除 Snapshot', 'success')
+    load()
+  }
+
+  async function delAction(id: number): Promise<void> {
+    if (!confirm('删除这条运营动作记录？')) return
+    await window.api.actions.remove(id)
+    load()
+  }
+
   async function removeListing(): Promise<void> {
     if (!confirm(`删除「${listing!.name}」及其全部记录？此操作不可撤销。`)) return
     await window.api.listings.remove(listingId)
@@ -210,7 +223,12 @@ export function ListingDetail(): JSX.Element {
 
       {/* Timeline */}
       <Section title="Timeline">
-        <Timeline snapshots={snapshots} actions={actions} />
+        <Timeline
+          snapshots={snapshots}
+          actions={actions}
+          onDeleteSnapshot={delSnapshot}
+          onDeleteAction={delAction}
+        />
       </Section>
 
       {showSnap && (
