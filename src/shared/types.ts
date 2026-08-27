@@ -238,6 +238,7 @@ export interface GithubConfig {
   user: string
   repo: string
   lastSync: string
+  remoteVersion: string // 本设备上次同步时云端数据的版本标识（用于判断该推还是该拉）
 }
 
 export interface GithubStatus {
@@ -257,10 +258,12 @@ export interface DeviceCode {
 }
 
 export interface SyncResult {
-  listingsAdded: number
-  listingsUpdated: number
+  mode: 'pushed' | 'pulled'
+  listings: number
   snapshots: number
   actions: number
+  shops: number
+  storeSnapshots: number
   imagesPulled: number
   imagesPushed: number
 }

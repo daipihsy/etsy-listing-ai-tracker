@@ -15,7 +15,8 @@ const GITHUB_DEFAULTS: GithubConfig = {
   token: '',
   user: '',
   repo: 'etsy-tracker-data',
-  lastSync: ''
+  lastSync: '',
+  remoteVersion: ''
 }
 
 function settingsPath(): string {

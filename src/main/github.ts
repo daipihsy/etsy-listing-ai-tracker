@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync, readdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import * as db from './db'
 import { getGithub, saveGithub } from './settings'
 import type { DeviceCode, GithubStatus, SyncResult } from '../shared/types'
@@ -216,10 +217,13 @@ async function downloadImage(
 
 // ---------------- 数据打包 / 应用 ----------------
 
-function buildStructured(): string {
+// 生成推送用的数据包，version 是本次唯一标识（用于设备间判断新旧）
+function buildStructured(): { str: string; version: string } {
   const data = db.exportAll()
-  return JSON.stringify({
-    version: 3,
+  const version = `${Date.now()}-${randomUUID().slice(0, 8)}`
+  const str = JSON.stringify({
+    schema: 3,
+    version,
     exportedAt: new Date().toISOString(),
     listings: data.listings,
     snapshots: data.snapshots,
@@ -228,6 +232,19 @@ function buildStructured(): string {
     storeSnapshots: data.storeSnapshots,
     storeChats: data.storeChats
   })
+  return { str, version }
+}
+
+// 覆盖本地前先备份本地数据到用户目录，防止误覆盖丢失
+function backupLocalBeforePull(): void {
+  try {
+    const dir = join(db.getDataDir(), 'sync-backups')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    writeFileSync(join(dir, `before-pull-${ts}.json`), JSON.stringify(db.exportAll()))
+  } catch {
+    /* 备份失败不阻塞同步 */
+  }
 }
 
 // ---------------- 同步主流程 ----------------
@@ -241,52 +258,68 @@ export async function sync(): Promise<SyncResult> {
   await ensureRepo(token, user, repo)
 
   const result: SyncResult = {
-    listingsAdded: 0,
-    listingsUpdated: 0,
+    mode: 'pushed',
+    listings: 0,
     snapshots: 0,
     actions: 0,
+    shops: 0,
+    storeSnapshots: 0,
     imagesPulled: 0,
     imagesPushed: 0
   }
 
-  // 1) 拉取远端结构化数据并合并到本地
   const remote = await getFile(token, user, repo, 'data.json')
+  let remoteObj: Record<string, unknown[]> & { version?: string } = {}
+  let remoteVersion = ''
   if (remote && remote.content) {
     try {
-      const parsed = JSON.parse(remote.content)
-      const stat = db.importMerge({
-        listings: parsed.listings || [],
-        snapshots: parsed.snapshots || [],
-        actions: parsed.actions || [],
-        shops: parsed.shops || [],
-        storeSnapshots: parsed.storeSnapshots || [],
-        storeChats: parsed.storeChats || []
-      })
-      result.listingsAdded = stat.listingsAdded
-      result.listingsUpdated = stat.listingsUpdated
-      result.snapshots = stat.snapshots
-      result.actions = stat.actions
+      remoteObj = JSON.parse(remote.content)
+      const rv = remoteObj.version
+      // 仅接受新格式版本号（含 '-'）；旧格式(数字)视为无版本，按「本地为准」推送
+      remoteVersion = typeof rv === 'string' && rv.includes('-') ? rv : ''
     } catch {
       throw new Error('远端 data.json 解析失败，同步中止（本地数据未改动）。')
     }
   }
 
-  // 2) 拉取本地缺失的图片
   const remoteImages = await listRemoteImages(token, user, repo)
-  const localImages = new Set(existsSync(db.getImagesDir()) ? readdirSync(db.getImagesDir()) : [])
-  for (const name of remoteImages) {
-    if (!localImages.has(name)) {
-      await downloadImage(token, user, repo, name)
-      localImages.add(name)
-      result.imagesPulled++
+  const localImagesNow = new Set(
+    existsSync(db.getImagesDir()) ? readdirSync(db.getImagesDir()) : []
+  )
+
+  // 云端有比本设备上次同步更新的版本 → 以云端为准，整体覆盖本地（含删除）
+  if (remoteVersion && remoteVersion !== g.remoteVersion) {
+    backupLocalBeforePull()
+    // 先拉本地缺失的图片
+    for (const name of remoteImages) {
+      if (!localImagesNow.has(name)) {
+        await downloadImage(token, user, repo, name)
+        result.imagesPulled++
+      }
     }
+    db.importAll({
+      listings: (remoteObj.listings || []) as never[],
+      snapshots: (remoteObj.snapshots || []) as never[],
+      actions: (remoteObj.actions || []) as never[],
+      shops: (remoteObj.shops || []) as never[],
+      storeSnapshots: (remoteObj.storeSnapshots || []) as never[],
+      storeChats: (remoteObj.storeChats || []) as never[]
+    })
+    saveGithub({ remoteVersion, lastSync: new Date().toISOString() })
+    const t = db.exportAll()
+    result.mode = 'pulled'
+    result.listings = t.listings.length
+    result.snapshots = t.snapshots.length
+    result.actions = t.actions.length
+    result.shops = t.shops.length
+    result.storeSnapshots = t.storeSnapshots.length
+    return result
   }
 
-  // 3) 推送合并后的结构化数据（覆盖 data.json）
-  const bundle = Buffer.from(buildStructured(), 'utf-8').toString('base64')
-  await putFile(token, user, repo, 'data.json', bundle, remote?.sha)
-
-  // 4) 推送远端缺失的图片（只传新增）
+  // 否则：本地为准 → 整体镜像推送（新增会上传、删除会随之从云端消失）
+  const { str, version } = buildStructured()
+  await putFile(token, user, repo, 'data.json', Buffer.from(str, 'utf-8').toString('base64'), remote?.sha)
+  // 推送远端缺失的图片（图片不可变，只新增不删）
   for (const name of readdirSync(db.getImagesDir())) {
     if (!remoteImages.has(name)) {
       const b64 = readFileSync(join(db.getImagesDir(), name)).toString('base64')
@@ -294,8 +327,14 @@ export async function sync(): Promise<SyncResult> {
       result.imagesPushed++
     }
   }
-
-  saveGithub({ lastSync: new Date().toISOString() })
+  saveGithub({ remoteVersion: version, lastSync: new Date().toISOString() })
+  const t = db.exportAll()
+  result.mode = 'pushed'
+  result.listings = t.listings.length
+  result.snapshots = t.snapshots.length
+  result.actions = t.actions.length
+  result.shops = t.shops.length
+  result.storeSnapshots = t.storeSnapshots.length
   return result
 }
 

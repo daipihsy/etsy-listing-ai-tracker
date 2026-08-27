@@ -72,8 +72,11 @@ export function GithubSync(): JSX.Element {
     try {
       await window.api.github.setRepo(repo.trim())
       const r = await window.api.github.sync()
+      const stat = `${r.listings} Listing · ${r.snapshots} 快照 · ${r.actions} 动作 · ${r.shops} 店铺`
       toast(
-        `同步完成：拉取合并 ${r.listingsAdded} 新增/${r.listingsUpdated} 更新 Listing、${r.snapshots} 数据、${r.actions} 动作；图片 ↓${r.imagesPulled} ↑${r.imagesPushed}`,
+        r.mode === 'pulled'
+          ? `已从云端更新本地（覆盖为云端最新）：${stat}，图片 ↓${r.imagesPulled}`
+          : `已同步到云端（以本机为准，含删除）：${stat}，图片 ↑${r.imagesPushed}`,
         'success'
       )
       refresh()
@@ -138,7 +141,7 @@ export function GithubSync(): JSX.Element {
             <RefreshCw size={15} /> 立即同步
           </Button>
           <p className="mt-2 text-xs text-black/35">
-            同步 = 先拉取远端并合并到本地（不删本地数据），再把合并结果推回。多设备轮流用时，每次开始/结束点一下即可。
+            单设备使用：同步 = 把本机当前状态整体上传（<b>新增和删除都会同步</b>）。换到新设备登录后首次同步，会自动用云端最新覆盖本地（覆盖前已自动备份到数据目录）。
           </p>
         </>
       ) : waiting && device ? (
